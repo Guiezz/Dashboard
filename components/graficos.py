@@ -1,5 +1,6 @@
 import plotly.express as px
 import pandas as pd
+import streamlit as st
 
 def grafico_oferta_hidrica():
     dados = pd.DataFrame({
