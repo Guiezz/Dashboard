@@ -150,3 +150,4 @@ def get_chart_data():
     grafico_df.rename(columns={"Volume (Hm³)": "volume", "Meta1v": "meta1", "Meta2v": "meta2", "Meta3v": "meta3"},
                       inplace=True)
     return grafico_df.to_dict('records')
+
