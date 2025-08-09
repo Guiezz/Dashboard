@@ -4,15 +4,20 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from numpy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+from typing import Optional, List
 import httpx
 from datetime import date
 import pandas as pd
 from contextlib import asynccontextmanager
+import os # Adicione se não tiver
+from fastapi.staticfiles import StaticFiles # Adicione esta linha
+
 
 # Importações locais
-from utils import crud, models, schemas
-from utils.database import engine, get_db
+import models
+import schemas
+import crud
+from database import engine, get_db
 
 
 # --- Evento de Inicialização e Finalização da API ---
@@ -44,6 +49,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+os.makedirs("static/images", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # --- ENDPOINTS DA API (O restante do código permanece o mesmo) ---
 
@@ -52,12 +60,34 @@ def read_root():
     return {"status": "API de Monitoramento da Seca está online e conectada ao banco de dados."}
 
 
+
+
 @app.get("/api/identification", response_model=schemas.Identificacao)
 async def get_identification_data(db: AsyncSession = Depends(get_db)):
     identificacao = await crud.get_identificacao(db)
     if not identificacao:
         raise HTTPException(status_code=404, detail="Dados de identificação não encontrados.")
-    return identificacao
+
+    # URL base para as imagens estáticas
+    url_base = "http://127.0.0.1:8000/static/images"
+
+    # Constrói o URL para a imagem de vista
+    url_imagem_vista = f"{url_base}/{identificacao.nome_imagem}" if identificacao.nome_imagem else None
+
+    # --- ADICIONE ESTA LÓGICA ---
+    # Constrói o URL para a imagem de usos
+    url_imagem_usos = f"{url_base}/{identificacao.nome_imagem_usos}" if identificacao.nome_imagem_usos else None
+
+    # Converte o modelo do banco para o schema da API e preenche os URLs
+    response_data = schemas.Identificacao.model_validate(identificacao)
+    response_data.url_imagem = url_imagem_vista
+    response_data.url_imagem_usos = url_imagem_usos # <- Adiciona o novo URL
+
+    return response_data
+
+@app.get("/api/usos-agua", response_model=List[schemas.UsoAgua])
+async def get_usos_agua(db: AsyncSession = Depends(get_db)):
+    return await crud.get_usos_agua(db)
 
 @app.get("/api/dashboard/summary")  # Removido o response_model para controlo manual
 async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
@@ -217,14 +247,44 @@ async def get_action_plans(
 
 @app.get("/api/water-balance/static-charts")
 async def get_static_balance_charts(db: AsyncSession = Depends(get_db)):
-    balanco_mensal = await crud.get_balanco_mensal(db)
-    composicao_demanda = await crud.get_composicao_demanda(db)
-    oferta_demanda = await crud.get_oferta_demanda(db)
+    balanco_mensal_data = await crud.get_balanco_mensal(db)
+    composicao_demanda_data = await crud.get_composicao_demanda(db)
+    oferta_demanda_data = await crud.get_oferta_demanda(db)
+
+    # --- Construção Manual da Resposta com os Nomes Exatos para o Frontend ---
+
+    balanco_formatado = [
+        {
+            "Mês": bm.mes,
+            "Afluência (m³/s)": float(bm.afluencia_m3s) if bm.afluencia_m3s is not None else 0,
+            "Demanda (m³/s)": float(bm.demandas_m3s) if bm.demandas_m3s is not None else 0,
+            "Balanço (m³/s)": float(bm.balanco_m3s) if bm.balanco_m3s is not None else 0,
+            "Evaporação (m³/s)": float(bm.evaporacao_m3s) if hasattr(bm, 'evaporacao_m3s') and bm.evaporacao_m3s is not None else 0
+        }
+        for bm in balanco_mensal_data
+    ]
+
+    composicao_formatada = [
+        {
+            "Uso": cd.usos,
+            "Vazão (L/s)": float(cd.demandas_hm3) if cd.demandas_hm3 is not None else 0
+        }
+        for cd in composicao_demanda_data
+    ]
+
+    oferta_formatada = [
+        {
+            "Cenário": od.cenarios,
+            "Oferta (L/s)": float(od.oferta_m3s) if od.oferta_m3s is not None else 0,
+            "Demanda (L/s)": float(od.demanda_m3s) if od.demanda_m3s is not None else 0
+        }
+        for od in oferta_demanda_data
+    ]
 
     return {
-        "balancoMensal": balanco_mensal,
-        "composicaoDemanda": composicao_demanda,
-        "ofertaDemanda": oferta_demanda,
+        "balancoMensal": balanco_formatado,
+        "composicaoDemanda": composicao_formatada,
+        "ofertaDemanda": oferta_formatada,
     }
 
 

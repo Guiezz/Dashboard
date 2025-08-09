@@ -8,8 +8,19 @@ class Identificacao(Base):
     __tablename__ = "identificacao"
     id = Column(Integer, primary_key=True, index=True)
     descricao = Column(Text, nullable=True)
+    nome = Column(String, nullable=True)
+    municipio = Column(String, nullable=True)
     lat = Column(Float, nullable=True)
     long = Column(Float, nullable=True)
+    nome_imagem = Column(String, nullable=True)
+    nome_imagem_usos = Column(String, nullable=True)
+
+class UsoAgua(Base):
+    __tablename__ = "uso_agua"
+    id = Column(Integer, primary_key=True, index=True)
+    uso = Column(String, nullable=True)
+    vazao_normal = Column(Float, nullable=True)
+    vazao_escassez = Column(Float, nullable=True)
 
 
 class BalancoMensal(Base):
@@ -19,6 +30,7 @@ class BalancoMensal(Base):
     afluencia_m3s = Column(Float)
     demandas_m3s = Column(Float)
     balanco_m3s = Column(Float)
+    evaporacao_m3s = Column(Float, nullable=True)
 
 
 class ComposicaoDemanda(Base):

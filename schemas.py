@@ -9,8 +9,18 @@ class Identificacao(BaseModel):
     descricao: Optional[str] = None
     lat: Optional[float] = None
     long: Optional[float] = None
-
+    nome: Optional[str] = None
+    municipio: Optional[str] = None
+    url_imagem: Optional[str] = None # <- Adicione esta linha
+    url_imagem_usos: Optional[str] = None
     class Config: from_attributes = True
+
+class UsoAgua(BaseModel):
+    uso: Optional[str] = None
+    vazao_normal: Optional[float] = None
+    vazao_escassez: Optional[float] = None
+    class Config: from_attributes = True
+
 
 
 class BalancoMensal(BaseModel):

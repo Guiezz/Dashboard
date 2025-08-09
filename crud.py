@@ -69,6 +69,10 @@ async def get_all_volume_meta(db: AsyncSession) -> List[models.VolumeMeta]:
     result = await db.execute(select(models.VolumeMeta))
     return result.scalars().all()
 
+async def get_usos_agua(db: AsyncSession) -> List[models.UsoAgua]:
+    result = await db.execute(select(models.UsoAgua))
+    return result.scalars().all()
+
 
 # --- FUNÇÃO CORRIGIDA ABAIXO ---
 async def get_history_with_status(db: AsyncSession) -> pd.DataFrame:
