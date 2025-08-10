@@ -111,36 +111,27 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
         "medidasRecomendadas": medidas_formatadas
     }
 
-
 @app.get("/api/history")
 async def get_history_data(db: AsyncSession = Depends(get_db)):
-    monitoramento_data = await crud.get_all_monitoring_data(db)
-    metas_data = await crud.get_all_volume_meta(db)
+    historico_com_estado = await crud.get_history_with_status(db)
 
-    if not monitoramento_data: return []
+    if historico_com_estado.empty:
+        return []
 
-    df_monitoramento = pd.DataFrame([m.__dict__ for m in monitoramento_data])
-    df_metas = pd.DataFrame([m.__dict__ for m in metas_data])
+    # A função get_history_with_status() já retorna os dados ordenados do mais novo para o mais antigo.
+    # O seu frontend espera que o JSON tenha chaves específicas, então vamos formatar a saída.
 
-    if df_monitoramento.empty or df_metas.empty: return []
+    df_formatado = historico_com_estado.copy()
 
-    df_monitoramento['mes_num'] = pd.to_datetime(df_monitoramento['data']).dt.month
-    df_merged = pd.merge(df_monitoramento, df_metas, on='mes_num', how='left')
+    df_formatado.rename(columns={
+        'data': 'Data',
+        'estado_calculado': 'Estado de Seca',
+        'volume_hm3': 'Volume (Hm³)'
+    }, inplace=True)
 
-    # A lógica aqui já usa `np.select`, que é a forma correta
-    df_merged['volume_percentual'] = pd.to_numeric(df_merged['volume_percentual'], errors='coerce').fillna(0) / 100
-    conditions = [
-        (df_merged['volume_percentual'] < df_merged['meta1v']),
-        (df_merged['volume_percentual'] < df_merged['meta2v']),
-        (df_merged['volume_percentual'] < df_merged['meta3v'])
-    ]
-    choices = ["SECA SEVERA", "SECA", "ALERTA"]
-    df_merged['Estado de Seca'] = np.select(conditions, choices, default='NORMAL')
+    df_formatado['Data'] = pd.to_datetime(df_formatado['Data']).dt.strftime('%d/%m/%Y')
 
-    df_merged.rename(columns={'data': 'Data', 'volume_hm3': 'Volume (Hm³)'}, inplace=True)
-    df_merged['Data'] = pd.to_datetime(df_merged['Data']).dt.strftime('%d/%m/%Y')
-
-    return df_merged[['Data', 'Estado de Seca', 'Volume (Hm³)']].to_dict('records')
+    return df_formatado[['Data', 'Estado de Seca', 'Volume (Hm³)']].to_dict('records')
 
 
 @app.get("/api/chart/volume-data")
