@@ -1,17 +1,19 @@
-# main.py (VERSÃO FINAL E CORRIGIDA)
+# main.py (VERSÃO COM CORREÇÃO DE IMPORT)
+
 import numpy as np
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from numpy import select
+# --- CORREÇÃO: Removida a importação direta de 'select' do numpy ---
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 import httpx
 from datetime import date
 import pandas as pd
 from contextlib import asynccontextmanager
-import os # Adicione se não tiver
-from fastapi.staticfiles import StaticFiles # Adicione esta linha
-
+import os
+from fastapi.staticfiles import StaticFiles
+# --- CORREÇÃO: Importação explícita do select do SQLAlchemy ---
+from sqlalchemy import select
 
 # Importações locais
 import models
@@ -23,19 +25,14 @@ from database import engine, get_db
 # --- Evento de Inicialização e Finalização da API ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Código a ser executado ANTES da aplicação iniciar
     print("Iniciando a aplicação...")
     async with engine.begin() as conn:
-        # CORREÇÃO: Executa a criação de tabelas de forma assíncrona
-        # await conn.run_sync(models.Base.metadata.drop_all) # Opcional: para limpar o banco a cada reinício
         await conn.run_sync(models.Base.metadata.create_all)
     print("Aplicação iniciada e tabelas verificadas.")
     yield
-    # Código a ser executado DEPOIS da aplicação finalizar
     print("Finalizando a aplicação...")
 
 
-# Cria a aplicação FastAPI com o evento de lifespan
 app = FastAPI(
     title="API de Monitoramento da Seca - Patu",
     lifespan=lifespan
@@ -53,13 +50,11 @@ os.makedirs("static/images", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# --- ENDPOINTS DA API (O restante do código permanece o mesmo) ---
+# --- ENDPOINTS DA API ---
 
 @app.get("/")
 def read_root():
     return {"status": "API de Monitoramento da Seca está online e conectada ao banco de dados."}
-
-
 
 
 @app.get("/api/identification", response_model=schemas.Identificacao)
@@ -68,28 +63,22 @@ async def get_identification_data(db: AsyncSession = Depends(get_db)):
     if not identificacao:
         raise HTTPException(status_code=404, detail="Dados de identificação não encontrados.")
 
-    # URL base para as imagens estáticas
     url_base = "http://127.0.0.1:8000/static/images"
-
-    # Constrói o URL para a imagem de vista
     url_imagem_vista = f"{url_base}/{identificacao.nome_imagem}" if identificacao.nome_imagem else None
-
-    # --- ADICIONE ESTA LÓGICA ---
-    # Constrói o URL para a imagem de usos
     url_imagem_usos = f"{url_base}/{identificacao.nome_imagem_usos}" if identificacao.nome_imagem_usos else None
 
-    # Converte o modelo do banco para o schema da API e preenche os URLs
     response_data = schemas.Identificacao.model_validate(identificacao)
     response_data.url_imagem = url_imagem_vista
-    response_data.url_imagem_usos = url_imagem_usos # <- Adiciona o novo URL
-
+    response_data.url_imagem_usos = url_imagem_usos
     return response_data
+
 
 @app.get("/api/usos-agua", response_model=List[schemas.UsoAgua])
 async def get_usos_agua(db: AsyncSession = Depends(get_db)):
     return await crud.get_usos_agua(db)
 
-@app.get("/api/dashboard/summary")  # Removido o response_model para controlo manual
+
+@app.get("/api/dashboard/summary")
 async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     historico_com_estado = await crud.get_history_with_status(db)
     if historico_com_estado.empty:
@@ -110,12 +99,8 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
 
     medidas = await crud.get_action_plans(db, estado=estado_atual)
 
-    # --- Construção Manual da Resposta ---
-    # Isto garante que as chaves são exatamente o que o frontend quer.
-    medidas_formatadas = [
-        {"Ação": m.acoes, "Descrição": m.descricao_acao, "Responsáveis": m.responsaveis}
-        for m in medidas
-    ]
+    medidas_formatadas = [{"Ação": m.acoes, "Descrição": m.descricao_acao, "Responsáveis": m.responsaveis} for m in
+                          medidas]
 
     return {
         "volumeAtualHm3": ultimo_registro.get("volume_hm3", 0),
@@ -127,30 +112,23 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     }
 
 
-# COLE ESTE NOVO ENDPOINT DENTRO DO SEU main.py
-
-@app.get("/api/history")  # O endpoint que faltava
+@app.get("/api/history")
 async def get_history_data(db: AsyncSession = Depends(get_db)):
-    """
-    Este endpoint retorna os dados combinados de monitoramento e metas,
-    calculando o estado de seca para cada registro, ideal para tabelas de histórico.
-    """
     monitoramento_data = await crud.get_all_monitoring_data(db)
     metas_data = await crud.get_all_volume_meta(db)
 
-    if not monitoramento_data:
-        return []
+    if not monitoramento_data: return []
 
     df_monitoramento = pd.DataFrame([m.__dict__ for m in monitoramento_data])
     df_metas = pd.DataFrame([m.__dict__ for m in metas_data])
 
-    if df_monitoramento.empty or df_metas.empty:
-        return []
+    if df_monitoramento.empty or df_metas.empty: return []
 
     df_monitoramento['mes_num'] = pd.to_datetime(df_monitoramento['data']).dt.month
     df_merged = pd.merge(df_monitoramento, df_metas, on='mes_num', how='left')
 
-    # Calcula o Estado de Seca para cada linha
+    # A lógica aqui já usa `np.select`, que é a forma correta
+    df_merged['volume_percentual'] = pd.to_numeric(df_merged['volume_percentual'], errors='coerce').fillna(0) / 100
     conditions = [
         (df_merged['volume_percentual'] < df_merged['meta1v']),
         (df_merged['volume_percentual'] < df_merged['meta2v']),
@@ -159,14 +137,9 @@ async def get_history_data(db: AsyncSession = Depends(get_db)):
     choices = ["SECA SEVERA", "SECA", "ALERTA"]
     df_merged['Estado de Seca'] = np.select(conditions, choices, default='NORMAL')
 
-    # Renomeia as colunas para o formato esperado pelo frontend
-    df_merged.rename(columns={
-        'data': 'Data',
-        'volume_hm3': 'Volume (Hm³)'
-    }, inplace=True)
+    df_merged.rename(columns={'data': 'Data', 'volume_hm3': 'Volume (Hm³)'}, inplace=True)
     df_merged['Data'] = pd.to_datetime(df_merged['Data']).dt.strftime('%d/%m/%Y')
 
-    # Retorna apenas as colunas que o histórico precisa
     return df_merged[['Data', 'Estado de Seca', 'Volume (Hm³)']].to_dict('records')
 
 
@@ -175,74 +148,47 @@ async def get_chart_data(db: AsyncSession = Depends(get_db)):
     monitoramento_data = await crud.get_all_monitoring_data(db)
     metas_data = await crud.get_all_volume_meta(db)
 
-    if not monitoramento_data:
-        return []
+    if not monitoramento_data: return []
 
     df_monitoramento = pd.DataFrame([m.__dict__ for m in monitoramento_data])
     df_metas = pd.DataFrame([m.__dict__ for m in metas_data])
 
-    if df_monitoramento.empty or df_metas.empty:
-        return []
+    if df_monitoramento.empty or df_metas.empty: return []
 
     df_monitoramento['mes_num'] = pd.to_datetime(df_monitoramento['data']).dt.month
     df_merged = pd.merge(df_monitoramento, df_metas, on='mes_num', how='left')
 
-    df_merged.rename(columns={
-        'data': 'Data', 'volume_hm3': 'volume', 'meta1v': 'meta1',
-        'meta2v': 'meta2', 'meta3v': 'meta3'
-    }, inplace=True)
+    df_merged.rename(
+        columns={'data': 'Data', 'volume_hm3': 'volume', 'meta1v': 'meta1', 'meta2v': 'meta2', 'meta3v': 'meta3'},
+        inplace=True)
     df_merged['Data'] = pd.to_datetime(df_merged['Data']).dt.strftime('%Y-%m-%d')
 
     return df_merged[['Data', 'volume', 'meta1', 'meta2', 'meta3']].to_dict('records')
 
 
-@app.get("/api/ongoing-actions") # Removido o response_model
+@app.get("/api/ongoing-actions")
 async def get_ongoing_actions(db: AsyncSession = Depends(get_db)):
     acoes = await crud.get_action_plans(db, situacao="Em andamento")
-    # --- Construção Manual da Resposta ---
-    return [
-        {"AÇÕES": a.acoes, "RESPONSÁVEIS": a.responsaveis, "SITUAÇÃO": a.situacao}
-        for a in acoes
-    ]
+    return [{"AÇÕES": a.acoes, "RESPONSÁVEIS": a.responsaveis, "SITUAÇÃO": a.situacao} for a in acoes]
 
-@app.get("/api/completed-actions") # Removido o response_model
+
+@app.get("/api/completed-actions")
 async def get_completed_actions(db: AsyncSession = Depends(get_db)):
     acoes = await crud.get_action_plans(db, situacao="Concluído")
-    # --- Construção Manual da Resposta ---
-    return [
-        {"AÇÕES": a.acoes, "RESPONSÁVEIS": a.responsaveis, "SITUAÇÃO": a.situacao}
-        for a in acoes
-    ]
+    return [{"AÇÕES": a.acoes, "RESPONSÁVEIS": a.responsaveis, "SITUAÇÃO": a.situacao} for a in acoes]
+
 
 @app.get("/api/action-plans/filters", response_model=schemas.ActionPlanFilterOptions)
 async def get_action_plan_filters(db: AsyncSession = Depends(get_db)):
     return await crud.get_action_plan_filters(db)
 
 
-@app.get("/api/action-plans")  # Removido o response_model para controlo manual
-async def get_action_plans(
-        estado: Optional[str] = None,
-        impacto: Optional[str] = None,
-        problema: Optional[str] = None,
-        acao: Optional[str] = None,
-        db: AsyncSession = Depends(get_db)
-):
+@app.get("/api/action-plans")
+async def get_action_plans(estado: Optional[str] = None, impacto: Optional[str] = None, problema: Optional[str] = None,
+                           acao: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     planos = await crud.get_action_plans(db, estado, impacto, problema, acao)
-
-    # --- Construção Manual da Resposta ---
-    # Isto garante que as chaves correspondem exatamente ao que o frontend espera.
-    # Com base nos seus ficheiros Excel originais, os nomes prováveis são estes:
-    return [
-        {
-            "DESCRIÇÃO DA AÇÃO": p.descricao_acao,
-            "CLASSES DE AÇÃO": p.classes_acao,
-            "RESPONSÁVEIS": p.responsaveis,
-            # Adicione outras chaves aqui se a sua tabela no frontend precisar delas
-            # "PROBLEMAS": p.problemas,
-            # "TIPOS DE IMPACTOS": p.tipos_impactos,
-        }
-        for p in planos
-    ]
+    return [{"DESCRIÇÃO DA AÇÃO": p.descricao_acao, "CLASSES DE AÇÃO": p.classes_acao, "RESPONSÁVEIS": p.responsaveis}
+            for p in planos]
 
 
 @app.get("/api/water-balance/static-charts")
@@ -251,41 +197,22 @@ async def get_static_balance_charts(db: AsyncSession = Depends(get_db)):
     composicao_demanda_data = await crud.get_composicao_demanda(db)
     oferta_demanda_data = await crud.get_oferta_demanda(db)
 
-    # --- Construção Manual da Resposta com os Nomes Exatos para o Frontend ---
-
     balanco_formatado = [
-        {
-            "Mês": bm.mes,
-            "Afluência (m³/s)": float(bm.afluencia_m3s) if bm.afluencia_m3s is not None else 0,
-            "Demanda (m³/s)": float(bm.demandas_m3s) if bm.demandas_m3s is not None else 0,
-            "Balanço (m³/s)": float(bm.balanco_m3s) if bm.balanco_m3s is not None else 0,
-            "Evaporação (m³/s)": float(bm.evaporacao_m3s) if hasattr(bm, 'evaporacao_m3s') and bm.evaporacao_m3s is not None else 0
-        }
-        for bm in balanco_mensal_data
-    ]
-
+        {"Mês": bm.mes, "Afluência (m³/s)": float(bm.afluencia_m3s) if bm.afluencia_m3s is not None else 0,
+         "Demanda (m³/s)": float(bm.demandas_m3s) if bm.demandas_m3s is not None else 0,
+         "Balanço (m³/s)": float(bm.balanco_m3s) if bm.balanco_m3s is not None else 0,
+         "Evaporação (m³/s)": float(bm.evaporacao_m3s) if hasattr(bm,
+                                                                  'evaporacao_m3s') and bm.evaporacao_m3s is not None else 0}
+        for bm in balanco_mensal_data]
     composicao_formatada = [
-        {
-            "Uso": cd.usos,
-            "Vazão (L/s)": float(cd.demandas_hm3) if cd.demandas_hm3 is not None else 0
-        }
-        for cd in composicao_demanda_data
-    ]
-
+        {"Uso": cd.usos, "Vazão (L/s)": float(cd.demandas_hm3) if cd.demandas_hm3 is not None else 0} for cd in
+        composicao_demanda_data]
     oferta_formatada = [
-        {
-            "Cenário": od.cenarios,
-            "Oferta (L/s)": float(od.oferta_m3s) if od.oferta_m3s is not None else 0,
-            "Demanda (L/s)": float(od.demanda_m3s) if od.demanda_m3s is not None else 0
-        }
-        for od in oferta_demanda_data
-    ]
+        {"Cenário": od.cenarios, "Oferta (L/s)": float(od.oferta_m3s) if od.oferta_m3s is not None else 0,
+         "Demanda (L/s)": float(od.demanda_m3s) if od.demanda_m3s is not None else 0} for od in oferta_demanda_data]
 
-    return {
-        "balancoMensal": balanco_formatado,
-        "composicaoDemanda": composicao_formatada,
-        "ofertaDemanda": oferta_formatada,
-    }
+    return {"balancoMensal": balanco_formatado, "composicaoDemanda": composicao_formatada,
+            "ofertaDemanda": oferta_formatada}
 
 
 @app.post("/api/update-funceme-data")
@@ -293,7 +220,6 @@ async def update_funceme_data(db: AsyncSession = Depends(get_db)):
     print("📡 Buscando dados históricos da API da FUNCEME...")
     hoje = date.today().strftime("%Y-%m-%d")
     url_funceme = f"https://apil5.funceme.br/rpc/v1/reservatorio-series?reservatorio_id=10&data_inicio=2023-01-01&data_fim={hoje}"
-
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url_funceme, timeout=30.0)
