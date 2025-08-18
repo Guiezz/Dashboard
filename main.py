@@ -205,6 +205,10 @@ async def get_static_balance_charts(db: AsyncSession = Depends(get_db)):
     return {"balancoMensal": balanco_formatado, "composicaoDemanda": composicao_formatada,
             "ofertaDemanda": oferta_formatada}
 
+@app.get("/api/responsaveis", response_model=List[schemas.Responsavel])
+async def get_responsaveis(db: AsyncSession = Depends(get_db)):
+    return await crud.get_responsaveis(db)
+
 
 @app.post("/api/update-funceme-data")
 async def update_funceme_data(db: AsyncSession = Depends(get_db)):

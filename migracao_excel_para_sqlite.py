@@ -8,7 +8,7 @@ import os
 from database import Base
 from models import (
     Identificacao, BalancoMensal, ComposicaoDemanda, OfertaDemanda,
-    PlanoAcao, VolumeMeta, Monitoramento, UsoAgua
+    PlanoAcao, VolumeMeta, Monitoramento, UsoAgua, Responsavel
 )
 
 DATABASE_URL_SYNC = "sqlite:///./dados_patu.db"
@@ -137,6 +137,22 @@ def carregar_dados_do_excel():
             db.query(Monitoramento).delete()
             db.bulk_insert_mappings(Monitoramento, df_mon.to_dict(orient="records"))
             print(" -> Dados de 'Monitoramento Histórico' carregados do arquivo local.")
+
+        caminho_responsaveis = 'data/responsaveis_patu.xlsx'
+        if os.path.exists(caminho_responsaveis):
+            df_resp = pd.read_excel(caminho_responsaveis)
+
+            # Lógica para transformar a planilha "larga" em "longa"
+            lista_responsaveis = []
+            for equipa in df_resp.columns:
+                # Pega todos os nomes de uma coluna/equipa, removendo os valores vazios
+                nomes = df_resp[equipa].dropna().tolist()
+                for nome in nomes:
+                    lista_responsaveis.append({"equipa": equipa, "nome": nome})
+
+            db.query(Responsavel).delete()
+            db.bulk_insert_mappings(Responsavel, lista_responsaveis)
+            print(" -> Dados de 'Responsáveis' carregados.")
 
         db.commit()
         print("\n✅ Todos os dados foram carregados e salvos no banco de dados com sucesso!")

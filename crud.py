@@ -73,6 +73,10 @@ async def get_usos_agua(db: AsyncSession) -> List[models.UsoAgua]:
     result = await db.execute(select(models.UsoAgua))
     return result.scalars().all()
 
+async def get_responsaveis(db: AsyncSession) -> List[models.Responsavel]:
+    result = await db.execute(select(models.Responsavel).order_by(models.Responsavel.equipa, models.Responsavel.nome))
+    return result.scalars().all()
+
 
 # --- FUNÇÃO CORRIGIDA ABAIXO ---
 async def get_history_with_status(db: AsyncSession) -> pd.DataFrame:

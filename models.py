@@ -82,3 +82,9 @@ class Monitoramento(Base):
     data = Column(Date, unique=True, index=True)
     volume_hm3 = Column(Float)
     volume_percentual = Column(Float)
+
+class Responsavel(Base):
+    __tablename__ = "responsaveis"
+    id = Column(Integer, primary_key=True, index=True)
+    equipa = Column(String, index=True)
+    nome = Column(String)

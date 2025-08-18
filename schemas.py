@@ -121,3 +121,8 @@ class DashboardSummary(BaseModel):
     diasDesdeUltimaMudanca: int
     # Usa o schema correto para Medidas
     medidasRecomendadas: List[PlanoAcaoMedidas]
+
+class Responsavel(BaseModel):
+    equipa: str
+    nome: str
+    class Config: from_attributes = True
