@@ -1,28 +1,21 @@
-# main.py (VERSÃO COM CORREÇÃO DE IMPORT)
-
+# main.py (VERSÃO FINAL MULTI-RESERVATÓRIO)
+import httpx
 import numpy as np
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-# --- CORREÇÃO: Removida a importação direta de 'select' do numpy ---
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
-import httpx
+from typing import List, Optional
 from datetime import date
 import pandas as pd
 from contextlib import asynccontextmanager
 import os
 from fastapi.staticfiles import StaticFiles
-# --- CORREÇÃO: Importação explícita do select do SQLAlchemy ---
 from sqlalchemy import select
 
-# Importações locais
-import models
-import schemas
-import crud
+import crud, models, schemas
 from database import engine, get_db
 
 
-# --- Evento de Inicialização e Finalização da API ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Iniciando a aplicação...")
@@ -33,188 +26,172 @@ async def lifespan(app: FastAPI):
     print("Finalizando a aplicação...")
 
 
-app = FastAPI(
-    title="API de Monitoramento da Seca - Patu",
-    lifespan=lifespan
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+app = FastAPI(title="API de Monitoramento de Seca", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"], allow_credentials=True, allow_methods=["*"],
+                   allow_headers=["*"])
 os.makedirs("static/images", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# --- ENDPOINTS DA API ---
+# --- ENDPOINTS DA API (AGORA MULTI-RESERVATÓRIO) ---
 
 @app.get("/")
 def read_root():
-    return {"status": "API de Monitoramento da Seca está online e conectada ao banco de dados."}
+    return {"status": "API de Monitoramento de Seca está online."}
 
 
-@app.get("/api/identification", response_model=schemas.Identificacao)
-async def get_identification_data(db: AsyncSession = Depends(get_db)):
-    identificacao = await crud.get_identificacao(db)
+@app.get("/api/reservatorios", response_model=List[schemas.ReservatorioSelecao])
+async def get_reservatorios_list(db: AsyncSession = Depends(get_db)):
+    """Retorna uma lista de todos os reservatórios disponíveis para o seletor."""
+    return await crud.get_reservatorios(db)
+
+
+@app.get("/api/reservatorios/{reservatorio_id}/identification", response_model=schemas.Reservatorio)
+async def get_identification_data(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    identificacao = await crud.get_identificacao(db, reservatorio_id=reservatorio_id)
     if not identificacao:
-        raise HTTPException(status_code=404, detail="Dados de identificação não encontrados.")
+        raise HTTPException(status_code=404, detail="Reservatório não encontrado.")
 
-    url_base = "http://127.0.0.1:8000/static/images"
-    url_imagem_vista = f"{url_base}/{identificacao.nome_imagem}" if identificacao.nome_imagem else None
-    url_imagem_usos = f"{url_base}/{identificacao.nome_imagem_usos}" if identificacao.nome_imagem_usos else None
+    url_base = "http://127.0.0.1:8000"
+    url_imagem_vista = f"{url_base}/static/images/{identificacao.nome_imagem}" if identificacao.nome_imagem else None
+    url_imagem_usos = f"{url_base}/static/images/{identificacao.nome_imagem_usos}" if identificacao.nome_imagem_usos else None
 
-    response_data = schemas.Identificacao.model_validate(identificacao)
+    response_data = schemas.Reservatorio.model_validate(identificacao)
     response_data.url_imagem = url_imagem_vista
     response_data.url_imagem_usos = url_imagem_usos
     return response_data
 
 
-@app.get("/api/usos-agua", response_model=List[schemas.UsoAgua])
-async def get_usos_agua(db: AsyncSession = Depends(get_db)):
-    return await crud.get_usos_agua(db)
+@app.get("/api/reservatorios/{reservatorio_id}/dashboard/summary")
+async def get_dashboard_summary(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    historico = await crud.get_history_with_status(db, reservatorio_id=reservatorio_id)
+    if historico.empty:
+        raise HTTPException(status_code=404, detail="Dados de monitoramento não disponíveis para este reservatório.")
 
-
-@app.get("/api/dashboard/summary")
-async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
-    historico_com_estado = await crud.get_history_with_status(db)
-    if historico_com_estado.empty:
-        raise HTTPException(status_code=404, detail="Dados de monitoramento não disponíveis.")
-
-    ultimo_registro = historico_com_estado.iloc[0]
+    ultimo_registro = historico.iloc[0]
     estado_atual = ultimo_registro['estado_calculado']
     data_atual = ultimo_registro['data']
 
-    historico_anterior = historico_com_estado[historico_com_estado['estado_calculado'] != estado_atual]
+    historico_anterior = historico[historico['estado_calculado'] != estado_atual]
 
     if not historico_anterior.empty:
-        data_da_mudanca = historico_anterior.iloc[0]['data']
-        dias_desde_ultima_mudanca = (data_atual - data_da_mudanca).days
+        dias = (data_atual - historico_anterior.iloc[0]['data']).days
     else:
-        data_mais_antiga = historico_com_estado.iloc[-1]['data']
-        dias_desde_ultima_mudanca = (data_atual - data_mais_antiga).days
+        dias = (data_atual - historico.iloc[-1]['data']).days
 
-    medidas = await crud.get_action_plans(db, estado=estado_atual)
-
+    medidas = await crud.get_action_plans(db, reservatorio_id=reservatorio_id, estado=estado_atual)
     medidas_formatadas = [{"Ação": m.acoes, "Descrição": m.descricao_acao, "Responsáveis": m.responsaveis} for m in
                           medidas]
 
     return {
         "volumeAtualHm3": ultimo_registro.get("volume_hm3", 0),
-        "volumePercentual": ultimo_registro.get("volume_percentual", 0),
+        "volumePercentual": ultimo_registro.get("volume_percentual", 0) * 100,
         "estadoAtualSeca": estado_atual,
         "dataUltimaMedicao": data_atual,
-        "diasDesdeUltimaMudanca": dias_desde_ultima_mudanca,
+        "diasDesdeUltimaMudanca": dias,
         "medidasRecomendadas": medidas_formatadas
     }
 
-@app.get("/api/history")
-async def get_history_data(db: AsyncSession = Depends(get_db)):
-    historico_com_estado = await crud.get_history_with_status(db)
 
-    if historico_com_estado.empty:
-        return []
-
-    # A função get_history_with_status() já retorna os dados ordenados do mais novo para o mais antigo.
-    # O seu frontend espera que o JSON tenha chaves específicas, então vamos formatar a saída.
-
-    df_formatado = historico_com_estado.copy()
-
-    df_formatado.rename(columns={
-        'data': 'Data',
-        'estado_calculado': 'Estado de Seca',
-        'volume_hm3': 'Volume (Hm³)'
-    }, inplace=True)
-
-    df_formatado['Data'] = pd.to_datetime(df_formatado['Data']).dt.strftime('%d/%m/%Y')
-
-    return df_formatado[['Data', 'Estado de Seca', 'Volume (Hm³)']].to_dict('records')
+@app.get("/api/reservatorios/{reservatorio_id}/history")
+async def get_history_data(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    historico_com_estado = await crud.get_history_with_status(db, reservatorio_id=reservatorio_id)
+    if historico_com_estado.empty: return []
+    df_merged = historico_com_estado.copy()
+    df_merged.rename(columns={'data': 'Data', 'estado_calculado': 'Estado de Seca', 'volume_hm3': 'Volume (Hm³)'},
+                     inplace=True)
+    df_merged['Data'] = pd.to_datetime(df_merged['Data']).dt.strftime('%d/%m/%Y')
+    return df_merged[['Data', 'Estado de Seca', 'Volume (Hm³)']].to_dict('records')
 
 
-@app.get("/api/chart/volume-data")
-async def get_chart_data(db: AsyncSession = Depends(get_db)):
-    monitoramento_data = await crud.get_all_monitoring_data(db)
-    metas_data = await crud.get_all_volume_meta(db)
+@app.get("/api/reservatorios/{reservatorio_id}/chart/volume-data")
+@app.get("/api/reservatorios/{reservatorio_id}/chart/volume-data")
+async def get_chart_data(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    historico_com_estado = await crud.get_history_with_status(db, reservatorio_id=reservatorio_id)
+    if historico_com_estado.empty: return []
+    df_merged = historico_com_estado.copy()
 
-    if not monitoramento_data: return []
-
-    df_monitoramento = pd.DataFrame([m.__dict__ for m in monitoramento_data])
-    df_metas = pd.DataFrame([m.__dict__ for m in metas_data])
-
-    if df_monitoramento.empty or df_metas.empty: return []
-
-    df_monitoramento['mes_num'] = pd.to_datetime(df_monitoramento['data']).dt.month
-    df_merged = pd.merge(df_monitoramento, df_metas, on='mes_num', how='left')
+    # --- LINHA ADICIONADA ---
+    # Garante que os dados estejam em ordem cronológica (do mais antigo para o mais novo)
+    df_merged = df_merged.sort_values(by='data', ascending=True)
+    # -------------------------
 
     df_merged.rename(
         columns={'data': 'Data', 'volume_hm3': 'volume', 'meta1v': 'meta1', 'meta2v': 'meta2', 'meta3v': 'meta3'},
         inplace=True)
     df_merged['Data'] = pd.to_datetime(df_merged['Data']).dt.strftime('%Y-%m-%d')
-
     return df_merged[['Data', 'volume', 'meta1', 'meta2', 'meta3']].to_dict('records')
 
-
-@app.get("/api/ongoing-actions")
-async def get_ongoing_actions(db: AsyncSession = Depends(get_db)):
-    acoes = await crud.get_action_plans(db, situacao="Em andamento")
+@app.get("/api/reservatorios/{reservatorio_id}/ongoing-actions")
+async def get_ongoing_actions(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    acoes = await crud.get_action_plans(db, reservatorio_id=reservatorio_id, situacao="Em andamento")
     return [{"AÇÕES": a.acoes, "RESPONSÁVEIS": a.responsaveis, "SITUAÇÃO": a.situacao} for a in acoes]
 
 
-@app.get("/api/completed-actions")
-async def get_completed_actions(db: AsyncSession = Depends(get_db)):
-    acoes = await crud.get_action_plans(db, situacao="Concluído")
+@app.get("/api/reservatorios/{reservatorio_id}/completed-actions")
+async def get_completed_actions(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    acoes = await crud.get_action_plans(db, reservatorio_id=reservatorio_id, situacao="Concluído")
     return [{"AÇÕES": a.acoes, "RESPONSÁVEIS": a.responsaveis, "SITUAÇÃO": a.situacao} for a in acoes]
 
 
-@app.get("/api/action-plans/filters", response_model=schemas.ActionPlanFilterOptions)
-async def get_action_plan_filters(db: AsyncSession = Depends(get_db)):
-    return await crud.get_action_plan_filters(db)
+@app.get("/api/reservatorios/{reservatorio_id}/action-plans/filters", response_model=schemas.ActionPlanFilterOptions)
+async def get_action_plan_filters(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    return await crud.get_action_plan_filters(db, reservatorio_id=reservatorio_id)
 
 
-@app.get("/api/action-plans")
-async def get_action_plans(estado: Optional[str] = None, impacto: Optional[str] = None, problema: Optional[str] = None,
-                           acao: Optional[str] = None, db: AsyncSession = Depends(get_db)):
-    planos = await crud.get_action_plans(db, estado, impacto, problema, acao)
+@app.get("/api/reservatorios/{reservatorio_id}/action-plans")
+async def get_action_plans(reservatorio_id: int, estado: Optional[str] = None, impacto: Optional[str] = None,
+                           problema: Optional[str] = None, acao: Optional[str] = None,
+                           db: AsyncSession = Depends(get_db)):
+    planos = await crud.get_action_plans(db, reservatorio_id=reservatorio_id, estado=estado, impacto=impacto,
+                                         problema=problema, acao=acao)
     return [{"DESCRIÇÃO DA AÇÃO": p.descricao_acao, "CLASSES DE AÇÃO": p.classes_acao, "RESPONSÁVEIS": p.responsaveis}
             for p in planos]
 
 
-@app.get("/api/water-balance/static-charts")
-async def get_static_balance_charts(db: AsyncSession = Depends(get_db)):
-    balanco_mensal_data = await crud.get_balanco_mensal(db)
-    composicao_demanda_data = await crud.get_composicao_demanda(db)
-    oferta_demanda_data = await crud.get_oferta_demanda(db)
-
+@app.get("/api/reservatorios/{reservatorio_id}/water-balance/static-charts")
+async def get_static_balance_charts(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    balanco_mensal_data = await crud.get_balanco_mensal(db, reservatorio_id=reservatorio_id)
+    composicao_demanda_data = await crud.get_composicao_demanda(db, reservatorio_id=reservatorio_id)
+    oferta_demanda_data = await crud.get_oferta_demanda(db, reservatorio_id=reservatorio_id)
     balanco_formatado = [
-        {"Mês": bm.mes, "Afluência (m³/s)": float(bm.afluencia_m3s) if bm.afluencia_m3s is not None else 0,
-         "Demanda (m³/s)": float(bm.demandas_m3s) if bm.demandas_m3s is not None else 0,
-         "Balanço (m³/s)": float(bm.balanco_m3s) if bm.balanco_m3s is not None else 0,
-         "Evaporação (m³/s)": float(bm.evaporacao_m3s) if hasattr(bm,
-                                                                  'evaporacao_m3s') and bm.evaporacao_m3s is not None else 0}
-        for bm in balanco_mensal_data]
-    composicao_formatada = [
-        {"Uso": cd.usos, "Vazão (L/s)": float(cd.demandas_hm3) if cd.demandas_hm3 is not None else 0} for cd in
-        composicao_demanda_data]
+        {"Mês": bm.mes, "Afluência (m³/s)": float(bm.afluencia_m3s or 0), "Demanda (m³/s)": float(bm.demandas_m3s or 0),
+         "Balanço (m³/s)": float(bm.balanco_m3s or 0), "Evaporação (m³/s)": float(bm.evaporacao_m3s or 0)} for bm in
+        balanco_mensal_data]
+    composicao_formatada = [{"Uso": cd.usos, "Vazão (L/s)": float(cd.demandas_hm3 or 0)} for cd in
+                            composicao_demanda_data]
     oferta_formatada = [
-        {"Cenário": od.cenarios, "Oferta (L/s)": float(od.oferta_m3s) if od.oferta_m3s is not None else 0,
-         "Demanda (L/s)": float(od.demanda_m3s) if od.demanda_m3s is not None else 0} for od in oferta_demanda_data]
-
+        {"Cenário": od.cenarios, "Oferta (L/s)": float(od.oferta_m3s or 0), "Demanda (L/s)": float(od.demanda_m3s or 0)}
+        for od in oferta_demanda_data]
     return {"balancoMensal": balanco_formatado, "composicaoDemanda": composicao_formatada,
             "ofertaDemanda": oferta_formatada}
 
-@app.get("/api/responsaveis", response_model=List[schemas.Responsavel])
-async def get_responsaveis(db: AsyncSession = Depends(get_db)):
-    return await crud.get_responsaveis(db)
+
+@app.get("/api/reservatorios/{reservatorio_id}/usos-agua", response_model=List[schemas.UsoAgua])
+async def get_usos_agua(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    return await crud.get_usos_agua(db, reservatorio_id=reservatorio_id)
 
 
-@app.post("/api/update-funceme-data")
-async def update_funceme_data(db: AsyncSession = Depends(get_db)):
-    print("📡 Buscando dados históricos da API da FUNCEME...")
+@app.get("/api/reservatorios/{reservatorio_id}/responsaveis", response_model=List[schemas.Responsavel])
+async def get_responsaveis(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    return await crud.get_responsaveis(db, reservatorio_id=reservatorio_id)
+
+
+@app.post("/api/reservatorios/{reservatorio_id}/update-funceme-data")
+async def update_funceme_data(reservatorio_id: int, db: AsyncSession = Depends(get_db)):
+    # 1. Busca o reservatório no nosso banco de dados para obter o código da FUNCEME
+    reservatorio = await crud.get_reservatorio_by_id(db, reservatorio_id=reservatorio_id)
+    if not reservatorio:
+        raise HTTPException(status_code=404, detail="Reservatório não encontrado na base de dados local.")
+    if not reservatorio.codigo_funceme:
+        raise HTTPException(status_code=400, detail="Este reservatório não possui um código da FUNCEME associado.")
+
+    print(f"📡 Buscando dados para o reservatório '{reservatorio.nome}' (FUNCEME ID: {reservatorio.codigo_funceme})...")
     hoje = date.today().strftime("%Y-%m-%d")
-    url_funceme = f"https://apil5.funceme.br/rpc/v1/reservatorio-series?reservatorio_id=10&data_inicio=2023-01-01&data_fim={hoje}"
+
+    # 2. Usa o código dinâmico para construir o URL
+    url_funceme = f"https://apil5.funceme.br/rpc/v1/reservatorio-series?reservatorio_id={reservatorio.codigo_funceme}&data_inicio=2023-01-01&data_fim={hoje}"
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url_funceme, timeout=30.0)
@@ -225,9 +202,12 @@ async def update_funceme_data(db: AsyncSession = Depends(get_db)):
 
     dados_reais = dados_funceme_raw.get('data', {}).get('list', [])
     if not dados_reais:
-        return {"status": "A API da FUNCEME não retornou novos dados."}
+        return {"status": "A API da FUNCEME não retornou novos dados para este reservatório."}
 
-    existing_dates_query = await db.execute(select(models.Monitoramento.data))
+    # 3. Filtra as datas existentes APENAS para o reservatório atual
+    existing_dates_query = await db.execute(
+        select(models.Monitoramento.data).where(models.Monitoramento.reservatorio_id == reservatorio_id)
+    )
     existing_dates = {d for d, in existing_dates_query}
 
     novos_registros = []
@@ -237,12 +217,14 @@ async def update_funceme_data(db: AsyncSession = Depends(get_db)):
             novos_registros.append(models.Monitoramento(
                 data=data_registro,
                 volume_hm3=registro.get('volume'),
-                volume_percentual=registro.get('volume_perc')
+                volume_percentual=registro.get('volume_perc'),
+                reservatorio_id=reservatorio_id  # 4. Associa o novo registro ao ID do nosso reservatório
             ))
 
     if novos_registros:
         db.add_all(novos_registros)
         await db.commit()
-        return {"status": f"{len(novos_registros)} novos registros de monitoramento foram adicionados."}
+        return {
+            "status": f"{len(novos_registros)} novos registros de monitoramento foram adicionados para '{reservatorio.nome}'."}
 
-    return {"status": "Nenhum registro novo para adicionar. O banco de dados já está atualizado."}
+    return {"status": f"Nenhum registro novo para '{reservatorio.nome}'. O banco de dados já está atualizado."}
