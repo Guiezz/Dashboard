@@ -1,23 +1,32 @@
 # main.py (VERSÃO SIMPLES PARA DEPLOY)
 import httpx
+import pandas as pd
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-import os
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from datetime import date
 from typing import List, Optional
-import pandas as pd
+import os
+from fastapi.staticfiles import StaticFiles
 
 import crud, models, schemas
-from database import get_db
+from database import get_db, engine # Adicione 'engine' aqui
 
-app = FastAPI(title="API de Monitoramento de Seca")
+# Adicione este bloco para criar as tabelas ao iniciar
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
+    yield
+
+app = FastAPI(title="API de Monitoramento de Seca", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-os.makedirs("static/images", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Certifique-se de que o diretório existe
+if not os.path.exists("static/images"):
+    os.makedirs("static/images")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # --- ENDPOINTS DA API (AGORA MULTI-RESERVATÓRIO) ---
 
 @app.get("/")
