@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 import crud, models, schemas
+from typing import List, Optional
 from database import engine, get_db, SessionLocal
 from migracao_excel_para_sqlite import popular_dados # Importamos a nossa nova função
 
