@@ -1,6 +1,6 @@
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base  # Importe declarative_base
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,9 +20,9 @@ AsyncSessionLocal = sessionmaker(
     expire_on_commit=False
 )
 
+# Defina a Base aqui!
+Base = declarative_base()
+
 async def get_db() -> AsyncSession:
-    """
-    Função de dependência para obter uma sessão de banco de dados.
-    """
     async with AsyncSessionLocal() as db:
         yield db
