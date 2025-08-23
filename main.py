@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 import os
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
+from sqlalchemy import text, select
+from datetime import date
 
 import crud, models, schemas
 from typing import List, Optional
