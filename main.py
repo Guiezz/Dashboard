@@ -9,25 +9,30 @@ from datetime import date
 from typing import List, Optional
 import os
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 
 import crud, models, schemas
-from database import get_db, engine # Adicione 'engine' aqui
+from database import get_db, engine
 
-# Adicione este bloco para criar as tabelas ao iniciar
+# Este bloco apenas garante que as tabelas existem na base de dados
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
+    print("Tabelas verificadas. Aplicação a arrancar.")
     yield
 
 app = FastAPI(title="API de Monitoramento de Seca", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# Certifique-se de que o diretório existe
+# Garante que o diretório de imagens existe
 if not os.path.exists("static/images"):
     os.makedirs("static/images")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-# --- ENDPOINTS DA API (AGORA MULTI-RESERVATÓRIO) ---
+
+
+# --- OS SEUS ENDPOINTS COMEÇAM AQUI ---
+# (Cole aqui todos os seus endpoints @app.get e @app.post)
 
 @app.get("/")
 def read_root():
