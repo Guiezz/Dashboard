@@ -1,53 +1,22 @@
-# main.py (VERSÃO FINAL COM AUTO-MIGRAÇÃO)
+# main.py (VERSÃO SIMPLES PARA DEPLOY)
 import httpx
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from contextlib import asynccontextmanager
 import os
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text, select
+from sqlalchemy import select
 from datetime import date
+from typing import List, Optional
+import pandas as pd
 
 import crud, models, schemas
-from typing import List, Optional
-from database import engine, get_db, SessionLocal
-from migracao_excel_para_sqlite import popular_dados # Importamos a nossa nova função
+from database import get_db
 
-async def verificar_e_popular_dados():
-    async with engine.begin() as conn:
-        # Cria todas as tabelas se não existirem
-        await conn.run_sync(models.Base.metadata.create_all)
-
-    db = SessionLocal()
-    try:
-        # Verifica se a tabela 'reservatorio' tem algum dado
-        resultado = await db.execute(text("SELECT COUNT(*) FROM reservatorio"))
-        contagem = resultado.scalar_one_or_none()
-        
-        if contagem == 0:
-            print("Base de dados vazia. A popular os dados pela primeira vez...")
-            await popular_dados(db)
-        else:
-            print("Base de dados já contém dados. A iniciar a aplicação.")
-    finally:
-        await db.close()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("A iniciar a aplicação...")
-    await verificar_e_popular_dados() # A magia acontece aqui
-    print("Aplicação pronta.")
-    yield
-    print("A finalizar a aplicação...")
-
-
-app = FastAPI(title="API de Monitoramento de Seca", lifespan=lifespan)
+app = FastAPI(title="API de Monitoramento de Seca")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 os.makedirs("static/images", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 # --- ENDPOINTS DA API (AGORA MULTI-RESERVATÓRIO) ---
 
