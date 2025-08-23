@@ -1,8 +1,11 @@
 # database.py
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+import os
 
-DATABASE_URL = "sqlite+aiosqlite:///./dados_patu.db"  # Usando a versão assíncrona do driver SQLite
+# Pega a URL do banco de dados de uma variável de ambiente.
+# Se não encontrar, usa o SQLite local como padrão.
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./dados_patu.db")
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)

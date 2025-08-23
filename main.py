@@ -52,7 +52,10 @@ async def get_identification_data(reservatorio_id: int, db: AsyncSession = Depen
     if not identificacao:
         raise HTTPException(status_code=404, detail="Reservatório não encontrado.")
 
-    url_base = "http://127.0.0.1:8000"
+    # ATENÇÃO: Esta parte é importante para o deploy
+    # O Render definirá a variável de ambiente RENDER_EXTERNAL_URL
+    url_base = os.getenv("RENDER_EXTERNAL_URL", "http://127.0.0.1:8000")
+
     url_imagem_vista = f"{url_base}/static/images/{identificacao.nome_imagem}" if identificacao.nome_imagem else None
     url_imagem_usos = f"{url_base}/static/images/{identificacao.nome_imagem_usos}" if identificacao.nome_imagem_usos else None
 
