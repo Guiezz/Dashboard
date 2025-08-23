@@ -14,7 +14,8 @@ from models import (
 
 # Usa a variável de ambiente se existir, senão usa o banco local
 DATABASE_URL_SYNC = os.getenv("DATABASE_URL", "sqlite:///./dados_patu.db")
-# Pequeno ajuste para SQLAlchemy síncrono
+
+# Ajuste a URL para o script síncrono
 if DATABASE_URL_SYNC.startswith("postgres://"):
     DATABASE_URL_SYNC = DATABASE_URL_SYNC.replace("postgres://", "postgresql://", 1)
 
