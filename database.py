@@ -7,8 +7,9 @@ import os
 # Se não encontrar, usa o SQLite local como padrão.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./dados_patu.db")
 
-# Adicione esta verificação para ajustar a URL em produção
-if DATABASE_URL.startswith("postgres://"):
+# ESTA É A LINHA CRÍTICA PARA O DEPLOY FUNCIONAR
+# Ela força o uso do driver asyncpg em produção
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
 engine = create_async_engine(DATABASE_URL, echo=True)
