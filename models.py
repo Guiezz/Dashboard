@@ -15,6 +15,7 @@ class Reservatorio(Base):
     long = Column(Float, nullable=True)
     nome_imagem = Column(String, nullable=True)
     nome_imagem_usos = Column(String, nullable=True)
+    codigo_funceme = Column(String, nullable=True) # Adicionado para corresponder ao script de migração
 
 
 class BalancoMensal(Base):
@@ -23,7 +24,6 @@ class BalancoMensal(Base):
     mes = Column(String)
     afluencia_m3s = Column(Float)
     demandas_m3s = Column(Float)
-    balanco_m3s = Column(Float)
     evaporacao_m3s = Column(Float, nullable=True)
     reservatorio_id = Column(Integer, ForeignKey("reservatorios.id"))
 
@@ -42,7 +42,6 @@ class OfertaDemanda(Base):
     cenarios = Column(String)
     oferta_m3s = Column(Float)
     demanda_m3s = Column(Float)
-    balanco_m3s = Column(Float)
     reservatorio_id = Column(Integer, ForeignKey("reservatorios.id"))
 
 
@@ -50,17 +49,15 @@ class PlanoAcao(Base):
     __tablename__ = "plano_acao"
     id = Column(Integer, primary_key=True, index=True)
     estado_seca = Column(String, index=True)
-    problemas = Column(String)
-    tipos_impactos = Column(String)
+    problemas = Column(String, nullable=True)
+    tipos_impactos = Column(String, nullable=True)
     acoes = Column(String, index=True)
-    descricao_acao = Column(Text)
-    classes_acao = Column(String)
-    responsaveis = Column(String)
-    prazo = Column(String)
-    situacao = Column(String, index=True)
-    indicadores = Column(String)
-    orgaos_envolvidos = Column(String)
-    custo_estimado_rs = Column(Float)
+    descricao_acao = Column(Text, nullable=True)
+    classes_acao = Column(String, nullable=True)
+    responsaveis = Column(String, nullable=True)
+    situacao = Column(String, index=True, nullable=True)
+    indicadores = Column(String, nullable=True)
+    orgaos_envolvidos = Column(String, nullable=True)
     reservatorio_id = Column(Integer, ForeignKey("reservatorios.id"))
 
 
@@ -69,9 +66,9 @@ class VolumeMeta(Base):
     id = Column(Integer, primary_key=True, index=True)
     mes_num = Column(Integer)
     mes_nome = Column(String)
-    meta1v = Column(Float)
-    meta2v = Column(Float)
-    meta3v = Column(Float)
+    meta1v = Column(Float, nullable=True)
+    meta2v = Column(Float, nullable=True)
+    meta3v = Column(Float, nullable=True)
     reservatorio_id = Column(Integer, ForeignKey("reservatorios.id"))
 
 
@@ -95,15 +92,10 @@ class UsoAgua(Base):
 
 class Responsavel(Base):
     __tablename__ = "responsaveis"
-
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, nullable=False)
-
-    # --- CAMPOS ATUALIZADOS ---
-    grupo = Column(String, index=True)
+    grupo = Column(String, index=True, nullable=True)
     organizacao = Column(String, nullable=True)
     cargo = Column(String, nullable=True)
-    # -------------------------
-
     reservatorio_id = Column(Integer, ForeignKey("reservatorios.id"))
     reservatorio = relationship("Reservatorio")
