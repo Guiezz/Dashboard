@@ -1,34 +1,48 @@
-# main.py (VERSÃO FINAL MULTI-RESERVATÓRIO)
+# main.py (VERSÃO FINAL COM AUTO-MIGRAÇÃO)
 import httpx
-import numpy as np
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
-from datetime import date
-import pandas as pd
 from contextlib import asynccontextmanager
 import os
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import text
 
 import crud, models, schemas
-from database import engine, get_db
+from database import engine, get_db, SessionLocal
+from migracao_excel_para_sqlite import popular_dados # Importamos a nossa nova função
+
+async def verificar_e_popular_dados():
+    async with engine.begin() as conn:
+        # Cria todas as tabelas se não existirem
+        await conn.run_sync(models.Base.metadata.create_all)
+
+    db = SessionLocal()
+    try:
+        # Verifica se a tabela 'reservatorio' tem algum dado
+        resultado = await db.execute(text("SELECT COUNT(*) FROM reservatorio"))
+        contagem = resultado.scalar_one_or_none()
+        
+        if contagem == 0:
+            print("Base de dados vazia. A popular os dados pela primeira vez...")
+            await popular_dados(db)
+        else:
+            print("Base de dados já contém dados. A iniciar a aplicação.")
+    finally:
+        await db.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Iniciando a aplicação...")
-    async with engine.begin() as conn:
-        await conn.run_sync(models.Base.metadata.create_all)
-    print("Aplicação iniciada e tabelas verificadas.")
+    print("A iniciar a aplicação...")
+    await verificar_e_popular_dados() # A magia acontece aqui
+    print("Aplicação pronta.")
     yield
-    print("Finalizando a aplicação...")
+    print("A finalizar a aplicação...")
 
 
 app = FastAPI(title="API de Monitoramento de Seca", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"], allow_credentials=True, allow_methods=["*"],
-                   allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 os.makedirs("static/images", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
