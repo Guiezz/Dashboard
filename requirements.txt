@@ -1,10 +1,9 @@
 fastapi~=0.116.1
-uvicorn~=0.20.0  # Adicione ou atualize
-gunicorn~=21.2.0 # Adicione esta linha
+uvicorn~=0.20.0
+gunicorn~=21.2.0
 sqlalchemy~=2.0.42
-
 pandas>=1.5.0
 httpx~=0.28.1
 pydantic~=2.11.7
+aiosqlite~=0.19.0
 asyncpg~=0.29.0
-aiosqlite~=0.19.0      # Mantenha para o banco de dados local
