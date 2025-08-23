@@ -12,7 +12,12 @@ from models import (
     PlanoAcao, VolumeMeta, Monitoramento, UsoAgua, Responsavel
 )
 
-DATABASE_URL_SYNC = "sqlite:///./dados_patu.db"
+# Usa a variável de ambiente se existir, senão usa o banco local
+DATABASE_URL_SYNC = os.getenv("DATABASE_URL", "sqlite:///./dados_patu.db")
+# Pequeno ajuste para SQLAlchemy síncrono
+if DATABASE_URL_SYNC.startswith("postgres://"):
+    DATABASE_URL_SYNC = DATABASE_URL_SYNC.replace("postgres://", "postgresql://", 1)
+
 engine = create_engine(DATABASE_URL_SYNC)
 SessionLocalSync = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
