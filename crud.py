@@ -45,14 +45,14 @@ async def get_usos_agua(db: AsyncSession, reservatorio_id: int) -> List[models.U
     return result.scalars().all()
 
 
-async def get_responsaveis(db: AsyncSession, reservatorio_id: int) -> List[models.Responsavel]:
+async def get_responsaveis(db: AsyncSession, reservatorio_id: int) -> List[models.Responsaveis]:
     result = await db.execute(
-        select(models.Responsavel)
-        .where(models.Responsavel.reservatorio_id == reservatorio_id)
+        select(models.Responsaveis)
+        .where(models.Responsaveis.reservatorio_id == reservatorio_id)
         .order_by(
-            models.Responsavel.grupo,
-            models.Responsavel.organizacao,
-            models.Responsavel.nome
+            models.Responsaveis.grupo,
+            models.Responsaveis.organizacao,
+            models.Responsaveis.nome
         )
     )
     return result.scalars().all()
