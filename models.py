@@ -100,7 +100,7 @@ class UsoAgua(Base):
 
 class Responsavel(Base):
     # CORREÇÃO: Padronizando para nome singular
-    __tablename__ = "responsavel"
+    __tablename__ = "responsaveis"
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, nullable=False)
     grupo = Column(String, index=True, nullable=True)
